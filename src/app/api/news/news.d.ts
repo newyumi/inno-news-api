@@ -8,6 +8,7 @@ export type News = {
   CreatedDate: Date;
   Categories: string;
   Content: string; // AI 요약
+  Image: string;
 };
 
 // RSS feed를 파싱하면서 Content에 AI 요약 내용을 넣고
