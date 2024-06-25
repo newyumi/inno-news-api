@@ -1,17 +1,26 @@
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { NextRequest, NextResponse } from "next/server";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
+import middleware from "../lib/middleware";
 
 const client = new DynamoDBClient({ region: "ap-northeast-2" });
 
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest, res: NextResponse) {
+  await middleware();
+
   const queryParams = req.nextUrl.searchParams;
-  const Id = queryParams.get("lastId");
-  const CreatedDate = queryParams.get("lastDate");
-  const LastEvaluatedKey = marshall({
-    Id,
-    CreatedDate,
-  });
+
+  let Id = null,
+    CreatedDate = null,
+    LastEvaluatedKey = null;
+  if (queryParams.get("lastId") && queryParams.get("lastDate")) {
+    Id = queryParams.get("lastId");
+    CreatedDate = queryParams.get("lastDate");
+    LastEvaluatedKey = marshall({
+      Id,
+      CreatedDate,
+    });
+  }
 
   const params: any = {
     TableName: "News",
@@ -25,12 +34,16 @@ export async function GET(req: NextRequest) {
   try {
     const command = new ScanCommand(params);
     const response = await client.send(command);
-    console.log("Items from DynamoDB:", response.Items);
+    // console.log("Items from DynamoDB:", response.Items);
 
     const formattedItems = response.Items?.map((item) => {
       const formattedItem: any = {};
       for (const [key, value] of Object.entries(item)) {
-        formattedItem[key] = value.S;
+        if (key === "Categories" && value.L) {
+          formattedItem[key] = value.L.map((listItem) => listItem.S);
+        } else {
+          formattedItem[key] = value.S;
+        }
       }
       return formattedItem;
     });

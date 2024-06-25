@@ -1,50 +1,63 @@
-import { parseString } from "xml2js";
+import Parser from "rss-parser";
 import { writeToDynamoDB } from "../../../utils/dynamodb";
 import { NextRequest, NextResponse } from "next/server";
-import fetch from "node-fetch";
 import { v4 as uuidv4 } from "uuid";
 
 import "server-only";
 
+const parser = new Parser();
+
+function extractImageUrl(item: any): string | null {
+  if (item.enclosure && item.enclosure.url) {
+    return item.enclosure.url;
+  } else if (item["media:content"] && item["media:content"].$ && item["media:content"].$.url) {
+    return item["media:content"].$.url;
+  } else {
+    const match = item.content.match(/<img[^>]+src="([^">]+)"/);
+    return match ? match[1] : null;
+  }
+}
+
+async function processRSSFeed(feedUrl: string): Promise<any[]> {
+  try {
+    const feed = await parser.parseURL(feedUrl);
+    // console.log("feed items::", feed.items);
+
+    const newsItems = feed.items.map((item: any) => ({
+      Id: uuidv4(),
+      Author: item["author"] ? item["author"] : item["dc:creator"] ? item["dc:creator"] : "",
+      Link: item.link ? item.link : "",
+      PubDate: item.pubDate ? new Date(item.pubDate).toISOString() : "",
+      Source: feed.title ? feed.title : "",
+      Title: item.title ? item.title : "",
+      Tags: item.categories ? item.categories.join(",") : "",
+      CreatedDate: new Date().toISOString(),
+      Categories: item.categories ? item.categories : "", // techcrunch array,
+      Content: item.content ? item.content : "",
+      Image: extractImageUrl(item),
+    }));
+
+    console.log("Processed news items:", newsItems);
+    writeToDynamoDB("News", newsItems);
+
+    return newsItems;
+  } catch (error: any) {
+    throw new Error(`Error processing RSS Feed (${feedUrl}): ${error.message}`);
+  }
+}
+
 export async function GET(req: NextRequest) {
-  const rssFeedUrl = "https://techcrunch.com/feed";
+  const feedUrls = ["https://techcrunch.com/feed", "https://www.theverge.com/rss/index.xml"];
 
   try {
-    const response = await fetch(rssFeedUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch RSS: ${response.status} ${response.statusText}`);
+    const processedItems: any[] = [];
+    for (const feedUrl of feedUrls) {
+      const items = await processRSSFeed(feedUrl);
+      processedItems.push(...items);
     }
 
-    const xmlData = await response.text();
-    let newsItems: any[] = [];
-    parseString(xmlData, (err, result) => {
-      if (err) {
-        throw new Error(`Failed to parse XML: ${err.message}`);
-      }
-
-      const channel = result.rss.channel[0];
-      if (!channel || !channel.item || !Array.isArray(channel.item)) {
-        throw new Error("RSS 채널 데이터가 올바르게 구성되지 않았습니다.");
-      }
-
-      newsItems = channel.item.map((item: any) => ({
-        Id: uuidv4(),
-        Author: item["dc:creator"] ? item["dc:creator"][0] : "", // dc.creator RSS 확장
-        Link: item.link ? item.link[0] : "",
-        PublishedDate: item.pubDate ? new Date(item.pubDate[0]).toISOString() : "",
-        Source: channel.title ? channel.title[0] : "",
-        Title: item.title ? item.title[0] : "",
-        Tags: item.category ? item.category.join(",") : "",
-        CreatedDate: new Date().toISOString(),
-        Categories: item.category ? item.category[0] : "",
-        Content: "",
-      }));
-
-      console.log("Processed news items:", newsItems);
-      writeToDynamoDB("News", newsItems);
-    });
-    return NextResponse.json({ message: "RSS Feed successfully processed", data: newsItems });
+    return NextResponse.json({ message: "RSS Feeds successfully processed", data: processedItems });
   } catch (error: any) {
-    return NextResponse.json({ message: `Error processing RSS Feed: ${error.message}` });
+    return NextResponse.json({ message: `Error processing RSS Feeds: ${error.message}` });
   }
 }

@@ -1,7 +1,7 @@
 export type News = {
   Author: string;
   Link: string;
-  PublishedDate: Date;
+  PubDate: Date;
   Source: string;
   Title: string;
   Tags: string[];
