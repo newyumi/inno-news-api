@@ -1,3 +1,10 @@
+## What is this project?
+This is an API program for fetching RSS feeds of tech news from sources like TechCrunch and The Verge. 
+If a news item has an image URL, it will extract the URL. 
+The data is then saved into AWS DynamoDB. 
+Additionally, it has a route to show the news list with pagination.
+
+
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
 ## Getting Started
